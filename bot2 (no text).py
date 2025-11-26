@@ -373,39 +373,36 @@ def callback_menu(call):
 
     def send_menu_safe():
         try:
-            # Основное — 9 фото (всё ок, Telegram держит)
-            media_main = [types.InputMediaPhoto(open("1.jpg", 'rb'), caption="*Основное меню*", parse_mode="Markdown")] + \
-                         [types.InputMediaPhoto(open(f"{i}.jpg", 'rb')) for i in range(2, 10)]
+            # === ОСНОВНОЕ МЕНЮ — 9 фото одним альбомом ===
+            media_main = [
+                types.InputMediaPhoto(open("1.jpg", 'rb'), caption="*Основное меню*", parse_mode="Markdown")
+            ]
+            for i in range(2, 10):
+                media_main.append(types.InputMediaPhoto(open(f"{i}.jpg", 'rb')))
             bot.send_media_group(chat_id, media_main)
 
-            # Барная — разбиваем на 5 + 3 (надёжнее, чем 8)
-            media_bar1 = [types.InputMediaPhoto(open("10.jpg", 'rb'), caption="*Барная карта*", parse_mode="Markdown")] + \
-                         [types.InputMediaPhoto(open(f"{i}.jpg", 'rb')) for i in range(11, 16)]  # 10-15.jpg
-            bot.send_media_group(chat_id, media_bar1)
+            # === БАРНАЯ КАРТА — 8 фото ОДНИМ альбомом (подпись только у первого) ===
+            media_bar = [
+                types.InputMediaPhoto(open("10.jpg", 'rb'), caption="*Барная карта*", parse_mode="Markdown")
+            ]
+            for i in range(11, 18):  # 11.jpg → 17.jpg
+                media_bar.append(types.InputMediaPhoto(open(f"{i}.jpg", 'rb')))
+            bot.send_media_group(chat_id, media_bar)
 
-            media_bar2 = [types.InputMediaPhoto(open(f"{i}.jpg", 'rb')) for i in range(16, 18)]  # 16-17.jpg
-            bot.send_media_group(chat_id, media_bar2)
-
-            # Кнопки
+            # === Кнопки под всем меню ===
             markup = types.InlineKeyboardMarkup()
             btn_order = types.InlineKeyboardButton("Сделать заказ", url="https://taplink.cc/glupy_franz/p/287dee/")
             btn_back = types.InlineKeyboardButton("Вернуться в меню", callback_data="back_to_main_menu")
             markup.add(btn_order, btn_back)
-            bot.send_message(chat_id, "🍽 *Выберите действие:*", reply_markup=markup, parse_mode="Markdown")
 
+            bot.send_message(chat_id, "Выберите действие:", reply_markup=markup, parse_mode="Markdown")
+
+        except FileNotFoundError as e:
+            logging.error(f"Файл меню не найден: {e}")
+            bot.send_message(chat_id, "Один из файлов меню отсутствует. Сообщите администратору.")
         except Exception as e:
             logging.error(f"Ошибка отправки меню: {e}")
-            bot.send_message(chat_id, "⚠️ Меню временно недоступно. Попробуйте позже или напишите админу.")
-
-    # 3 попытки с паузами
-    for attempt in range(3):
-        try:
-            send_menu_safe()
-            break
-        except:
-            time.sleep(3)
-            if attempt == 2:
-                bot.send_message(chat_id, "⚠️ Не удалось загрузить меню (плохое соединение). Попробуйте позже.")
+            bot.send_message(chat_id, "Меню временно недоступно. Попробуйте позже.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_main_menu")
@@ -1520,4 +1517,5 @@ if __name__ == '__main__':
             bot.send_message(ADMIN_CHAT_ID, f"🚨 Бот упал! Ошибка:\n{e}\nПерезапуск через 5 сек...")
             time.sleep(5)  # Пауза перед рестартом
             logging.info("Перезапуск polling...")
+
             continue  # Снова в цикл
