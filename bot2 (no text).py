@@ -1264,10 +1264,12 @@ def handle_time_button(call):
         bot.send_message(chat_id, "*❌ Ошибка времени. Попробуйте ещё раз.*", reply_markup=get_time_buttons(),
                          parse_mode="Markdown")
 
+
 def save_booking(chat_id):
     conn = sqlite3.connect('booking.db', check_same_thread=False)
     cursor = conn.cursor()
     data = user_state.get(chat_id, {})
+
     table_id = data.get('table')
     date = data.get('date')
     start_time = data.get('time')
@@ -1275,17 +1277,23 @@ def save_booking(chat_id):
     phone_number = data.get('phone')
     name = data.get('name')
     comment = data.get('comment', 'Нет комментария')
+
     start_time_dt = datetime.datetime.strptime(start_time, '%H:%M')
     end_time_dt = start_time_dt + datetime.timedelta(hours=3)
     close_time = datetime.datetime.strptime("23:00", '%H:%M')
+
     if end_time_dt > close_time:
         end_time_dt = close_time
+
     end_time = end_time_dt.strftime('%H:%M')
+
+    # Проверка на пересечение бронирований
     cursor.execute('''
         SELECT start_time, end_time FROM tables 
         WHERE id = ? AND date = ? AND status = "confirmed"
     ''', (table_id, date))
     existing_bookings = cursor.fetchall()
+
     for booking in existing_bookings:
         existing_start_time = datetime.datetime.strptime(booking[0], '%H:%M')
         existing_end_time = datetime.datetime.strptime(booking[1], '%H:%M')
@@ -1296,43 +1304,61 @@ def save_booking(chat_id):
             ask_time(chat_id)
             conn.close()
             return
+
+    # Сохраняем бронь
     cursor.execute('''
         INSERT INTO tables (id, date, start_time, end_time, status, num_of_people, phone_number, chat_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', (int(table_id), date, start_time, end_time, 'confirmed', num_of_people, phone_number, chat_id))
     conn.commit()
+
     booking_id = cursor.lastrowid
     cursor.execute('INSERT INTO reviews (booking_id, chat_id) VALUES (?, ?)', (booking_id, chat_id))
     conn.commit()
+
     markup = types.InlineKeyboardMarkup()
     btn_back = types.InlineKeyboardButton("Вернуться в меню", callback_data="back_to_main_menu")
     markup.add(btn_back)
-    # Формируем сообщение о бронировании с использованием случайной фразы и полной информации
+
+    # === 1. СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ (с номером столика) ===
     confirmation_message = get_random_warm_phrase('booking').format(name=name, date=date, start_time=start_time)
+
     booking_details = (
-        f"📅 Дата: {date}\n"
-        f"🕒 Время: {start_time} - {end_time}\n"
-        f"👥 Гостей: {num_of_people}\n"
-        f"📞 Телефон: {phone_number}\n"
-        f"💬 Комментарий: {comment}"
+        f"📅 *Дата:* {date}\n"
+        f"🕒 *Время:* {start_time} - {end_time}\n"
+        f"👥 *Гостей:* {num_of_people}\n"
+        f"🪑 *Столик №{table_id}*\n"
+        f"📞 *Телефон:* {phone_number}\n"
+        f"💬 *Комментарий:* {comment}"
     )
-    bot.send_message(chat_id, f"*{confirmation_message}*\n\n*{booking_details}*",
-                     reply_markup=markup, parse_mode="Markdown")
-    # Отправляем временное сообщение с часами для удаления текстовой клавиатуры
+
+    bot.send_message(chat_id,
+                     f"*{confirmation_message}*\n\n{booking_details}",
+                     reply_markup=markup,
+                     parse_mode="Markdown")
+
+    # Временное сообщение для удаления клавиатуры
     try:
-        temp_message = bot.send_message(chat_id, "⌛", reply_markup=types.ReplyKeyboardRemove(), parse_mode="Markdown")
+        temp_message = bot.send_message(chat_id, "⌛", reply_markup=types.ReplyKeyboardRemove())
         threading.Timer(0.11, lambda: bot.delete_message(chat_id, temp_message.message_id)).start()
     except Exception as e:
-        logging.error(f"Ошибка при удалении временного сообщения в save_booking: {e}")
-    bot.send_message(ADMIN_CHAT_ID, f"✅ Новое бронирование:\n"
-                                    f"Имя гостя: {name}\n"
-                                    f"Столик: {table_id}\n"
-                                    f"Дата: {date}\n"
-                                    f"Время: {start_time} - {end_time}\n"
-                                    f"Гостей: {num_of_people}\n"
-                                    f"Телефон: {phone_number}\n"
-                                    f"💬 Комментарий: {comment}",
-                     parse_mode="Markdown")
+        logging.error(f"Ошибка при удалении временного сообщения: {e}")
+
+    # === 2. СООБЩЕНИЕ ВЛАДЕЛЬЦУ (всё жирным) ===
+    owner_message = f"""
+*Новая бронь!*
+
+*Имя гостя:* {name}
+*Столик:* №{table_id}
+*Дата:* {date}
+*Время:* {start_time} - {end_time}
+*Гостей:* {num_of_people}
+*Телефон:* {phone_number}
+*Комментарий:* {comment}
+"""
+
+    bot.send_message(ADMIN_CHAT_ID, owner_message, parse_mode="Markdown")
+
     conn.close()
     schedule_review_notifications(chat_id, booking_id, name, date, start_time)
 
