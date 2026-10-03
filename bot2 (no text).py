@@ -55,7 +55,7 @@ def get_random_warm_phrase(phrase_type):
     return ""
 
 # Инициализация бота
-bot = telebot.TeleBot('8264428870:AAGlUN3worvwo4ee3HUbYYJAlwzHs4AsUG8')
+bot = telebot.TeleBot('')
 ADMIN_CHAT_ID = 1069506191
 user_state = {}
 
